@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap');
+
 * {
     box-sizing: border-box;
 }
@@ -8,8 +10,14 @@ html, body {
 }
 
 body {
+    font-family: 'Roboto', sans-serif;
+    font-size: 16px;
     color: hsl(0, 0%, 97%);
-    background-color: hsl(240, 33%, 1%);
+    background: linear-gradient(45deg, hsl(206, 7%, 19%), hsl(206, 11%, 13%));
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'liga';
 }
 
 .container {
