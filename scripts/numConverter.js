@@ -10,6 +10,8 @@ const bodyFontSize = window.getComputedStyle(document.body).fontSize.slice(0, -2
 const state = {
     el: null,
     currOutput: null,
+    firstCount: 0,
+    secondCount: 0,
 };
 const digitsLetter = {
     10: 'A', 11: 'B',
@@ -27,7 +29,7 @@ const _initButtons = el => {
         const input = document.createElement('div');
         input.classList.add('no-select');
         input.textContent = key;
-        input.dataset.key = key;
+        input.setAttribute('key', key);
 
         if (key === 'del') {
             input.classList.add('material-icons');
@@ -40,9 +42,19 @@ const _initButtons = el => {
         }
 
         input.addEventListener('click', updateOutput);
+        input.addEventListener('mousedown', addActiveClass);
+        input.addEventListener('touchstart', addActiveClass);
+        input.addEventListener('mouseup', removeActiveClass);
+        input.addEventListener('touchend', removeActiveClass);
         el.appendChild(input);
     }
 };
+
+const addActiveClass = e => {
+    e.target.classList.add('active');
+};
+
+const removeActiveClass = e => e.target.classList.remove('active');
 
 const _initSelectables = el => {
     for (let i = 2; i <= 16; i++) {
@@ -50,6 +62,16 @@ const _initSelectables = el => {
         select.classList.add('no-select');
         select.textContent = `Base ${i.toString().padStart(2, '0')}`;
         select.addEventListener('click', base);
+        select.setAttribute('tabindex', '-1');
+
+        select.addEventListener('focusin', e => {
+            e.target.classList.add('active-output');
+        });
+
+        select.addEventListener('focusout', e => {
+            e.target.classList.remove('active-output');
+        })
+
         el.appendChild(select);
     }
 };
@@ -62,12 +84,27 @@ const clearOutput = () => {
         output.style.fontSize = `${3 * bodyFontSize}px`;
         output.style.textAlign = 'right';
         output.style.justifyContent = 'center';
+        output.style.paddingLeft = '0rem';
+        state[output.id] = 0;
     }
 };
 
-const deleteOutput = el => {
+const deleteOutput = (el, base) => {
+    let offset = 3;
+    if (base === 16 || base === 2)
+        offset = 4;
+
     if (el.textContent === '0')
         return;
+
+    state[el.id] = (
+        state[el.id] === 1 ? offset : state[el.id] - 1
+    );
+
+    if (el.textContent.slice(-1) === '.') {
+        let c = el.textContent.match(/[A-F0-9]+(?=\.$)/g)[0].length;
+        state[el.id] = c === offset ? 0 : c;
+    }
         
     el.textContent = el.textContent.slice(0, -1);
     // Remove newlines from start and end of string
@@ -84,8 +121,13 @@ const deleteOutput = el => {
     if (el.clientWidth < el.scrollWidth)
         el.style.fontSize = `${bodyFontSize * 3 / scaleFactor}px`;
     
-    if (!el.textContent)
+    if (!el.textContent) {
         el.textContent = 0;
+        state[el.id] = 0;
+    }
+
+    if (el.textContent.slice(-1) === '.')
+        state[el.id] = 0;
 };
 
 const removeActiveOutput = e => {
@@ -112,10 +154,26 @@ const activeOutput = e => {
     validateInput(el.previousSibling);
 };
 
-const update = (el, text) => {
+const update = (el, text, base) => {
+    let offset = 3;
+    if (base === 16 || base === 2)
+        offset = 4;
+
     if (el.textContent === '0' && text !== '.') {
+        if (text !== '0') state[el.id]++;
         el.textContent = text;
         return;
+    }
+
+    if (el.textContent.includes('.') && text === '.')
+        return;
+
+    if (text === '.')
+        state[el.id] = 0;
+
+    if (state[el.id] === offset) {
+        el.textContent += ' ';
+        state[el.id] = 0;
     }
 
     el.textContent += text;
@@ -125,16 +183,20 @@ const update = (el, text) => {
 
         if (currFontSize > bodyFontSize * 3 / scaleFactor) {
             el.style.fontSize = `${currFontSize / scaleFactor}px`;
+            if (text !== '.') state[el.id]++;
             return;
         }
 
         el.style.textAlign = 'left';
         el.style.justifyContent = 'start';
         el.textContent = (
-            el.textContent.slice(0, -1) + '\n' + el.textContent.slice(-1)
+            el.textContent.replace(/\s(?=[A-F0-9]+$)/g, '\n')
         );
         el.scrollTop = el.scrollHeight;
+        el.style.paddingLeft = '0.7rem';
     }
+
+    if (text !== '.') state[el.id]++;
 };
 
 const updateOutput = e => {
@@ -142,6 +204,8 @@ const updateOutput = e => {
     const inactiveOutput = document.querySelector('.output-box:not(.active-output)');
     const tbaseEl = document.querySelector('.select:not(.active-output)');
     const fbaseEl = document.querySelector('.select.active-output');
+    const fbase = getBase(fbaseEl);
+    const tbase = getBase(tbaseEl);
 
     switch (e.target.textContent) {
         case 'AC':
@@ -153,21 +217,18 @@ const updateOutput = e => {
             break;
 
         case '=':
-            const fbase = getBase(fbaseEl);
-            const tbase = getBase(tbaseEl);
-            const ans = convertToBase(activeOutput.textContent, fbase, tbase);
-            console.log(ans);
+            let ans = convertToBase(activeOutput.textContent, fbase, tbase);
             
             while (inactiveOutput.textContent !== '0')
-                deleteOutput(inactiveOutput);
+                deleteOutput(inactiveOutput, tbase);
 
             for (let digit of ans)
-                update(inactiveOutput, digit);
+                update(inactiveOutput, digit, tbase);
             
             break;
 
         default:
-            update(activeOutput, e.target.textContent);
+            update(activeOutput, e.target.textContent, fbase);
             break;
     }
 };
@@ -227,6 +288,7 @@ const base = e => {
     state.el.innerHTML = state.el.innerHTML.replace(/\d{2}/g, number);
     closeSelectables(e);
     validateInput(state.el);
+    document.querySelector('.num-converter').focus();
 };
 
 const convertToBase = (num, fbase, tbase) => {
@@ -277,12 +339,20 @@ const convertToBase = (num, fbase, tbase) => {
     return ans.join('');
 };
 
+const simulateMouseClick = (el, e) => {
+    if (el.hasAttribute('disabled'))
+        return;
+    el.dispatchEvent(new Event('mousedown'));
+    el.dispatchEvent(new Event(e));
+    setTimeout(() => el.dispatchEvent(new Event('mouseup')), 100);
+};
+
 
 export default function (parent) {
     // Main calculator app container
     const converter = document.createElement('div');
     converter.classList.add('num-converter');
-    converter.setAttribute('tabindex', '1');
+    converter.setAttribute('tabindex', '0');
     converter.addEventListener('focusin', activeOutput);
     converter.addEventListener('focusout', removeActiveOutput);
 
@@ -304,6 +374,8 @@ export default function (parent) {
     const secondOutput = document.createElement('div');
     firstOutput.classList.add('output-box');
     secondOutput.classList.add('output-box');
+    firstOutput.setAttribute('id', 'firstCount');
+    secondOutput.setAttribute('id', 'secondCount');
     state.currOutput = secondOutput;
     firstOutput.addEventListener('click', activeOutput);
     secondOutput.addEventListener('click', activeOutput);
@@ -364,37 +436,101 @@ export default function (parent) {
     converter.appendChild(inputContainer);
     converter.appendChild(selectContainer);
 
-    converter.addEventListener('keydown', e => {
-        if (e.ctrlKey && e.key === 'Enter') {
+    converter.addEventListener('keydown', e => e.preventDefault());
+
+    converter.addEventListener('keyup', e => {
+
+        if (e.ctrlKey && (e.key === 'Enter')) {
             const el = document.querySelector('.select.active-output');
+            const number = getBase(el);
             toggleSelectables(el);
+            setTimeout(() => {
+                document.querySelector(
+                        `.select-container > div:nth-child(2) > div:nth-child(${number - 1})`)
+                        .focus();
+            }, 500);
+            return;
         }
 
-        switch(e.key) {
+        let el = null;
+        switch(e.code) {
             case 'Escape':
                 closeSelectables(e);
+                converter.focus();
                 break;
     
             case 'ArrowUp':
             case 'ArrowDown':
-                console.log(`hi`);
+                if (document.activeElement === converter)
+                    el = document.querySelector(
+                        '.output-container > .output-box:not(.active-output)');
                 break;
 
             case 'Enter':
+            case 'NumpadEnter':
+                if (document.activeElement === converter) {
+                    el = document.querySelector(".input-container > div[key='=']");
+                    simulateMouseClick(el, 'click');
+                    el = null;
+                }
                 break;
 
             case 'Backspace':
+                el = document.querySelector(".input-container > div[key='del']");
                 break;
 
             case 'Delete':
+                el = document.querySelector(".input-container > div[key='AC']");
                 break;
 
+            case 'NumpadDecimal':
+            case 'Period':
+                el = document.querySelector(`.input-container > div[key="."]`);
+                break;
+
+            default:
+                el = document.querySelector(`.input-container > div[key="${e.code.slice(-1)}"]`);
+                break;
+        }
+
+        if (el) simulateMouseClick(el, 'click');
+
+        if ((el = document.querySelector('.select-container > div:nth-child(2)'))
+                    .contains(document.activeElement)) {
             
+            switch (e.code) {
+                case 'ArrowUp':
+                    let prev = document.activeElement.previousElementSibling;
+                    if (prev) prev.focus();
+                    else el.lastElementChild.focus();
+                    break;
+
+                case 'ArrowDown':
+                    let next = document.activeElement.nextElementSibling;
+                    if (next) next.focus();
+                    else el.firstElementChild.focus();
+                    break;
+
+                case 'Enter':
+                case 'NumpadEnter':
+                    simulateMouseClick(document.activeElement, 'click');
+                    break;
+            }
         }
     });
 
+    const hint = document.createElement('div');
+    hint.classList.add('hints');
+    hint.innerHTML = `
+        <kbd>Ctrl</kbd> + <kbd>⏎</kbd> to select a numeral system.<br>
+        <kbd>Esc</kbd> to close any dialogue box.<br>
+        <kbd>←</kbd> to delete a number.<br>
+        <kbd>Del</kbd> to clear both input and output.<br>
+        <kbd>↑</kbd> <kbd>↓</kbd> to cycle between inputs.<br>
+    `;
 
     parent.appendChild(converter);
+    parent.appendChild(hint);
 
 
     // Clear the output of the calculator.
